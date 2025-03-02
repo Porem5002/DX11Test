@@ -14,6 +14,8 @@
 
 gfx_t* gfx_create(window_t* window)
 {
+    HRESULT hr;
+
     gfx_t* gfx = malloc(sizeof(gfx_t));
     assert(gfx != NULL);
 
@@ -38,7 +40,7 @@ gfx_t* gfx_create(window_t* window)
     ID3D11Device* device;
     ID3D11DeviceContext* context;
 
-    HRESULT res = D3D11CreateDeviceAndSwapChain(
+    hr = D3D11CreateDeviceAndSwapChain(
         NULL,
         D3D_DRIVER_TYPE_HARDWARE,
         NULL,
@@ -49,17 +51,38 @@ gfx_t* gfx_create(window_t* window)
         &swap_chain_desc, &swap_chain, &device, NULL, &context
     );
 
-    if(FAILED(res))
+    if(FAILED(hr))
     {
-        printf("Error creating device and swap chain: %d(%x)\n", res, res);
-        abort();
+        char buf [1024];
+        FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM, NULL, hr, 0, buf, sizeof(buf), NULL);
+        printf("Error calling D3D11CreateDeviceAndSwapChain: %s\n", buf);
+        printf("Location: %s:%d\n", __FILE__, __LINE__);
+        exit(EXIT_FAILURE);
     }
 
     ID3D11Resource* back_buffer = NULL;
-    COMCALL(swap_chain, GetBuffer, 0, &IID_ID3D11Resource, (void**)&back_buffer);
+    hr = COMCALL(swap_chain, GetBuffer, 0, &IID_ID3D11Resource, (void**)&back_buffer);
     
+    if(FAILED(hr))
+    {
+        char buf [1024];
+        FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM, NULL, hr, 0, buf, sizeof(buf), NULL);
+        printf("Error calling gfx->swap_chain->GetBuffer: %s\n", buf);
+        printf("Location: %s:%d\n", __FILE__, __LINE__);
+        exit(EXIT_FAILURE);
+    }
+
     ID3D11RenderTargetView* target = NULL;
-    COMCALL(device, CreateRenderTargetView, back_buffer, NULL, &target);
+    hr = COMCALL(device, CreateRenderTargetView, back_buffer, NULL, &target);
+
+    if(FAILED(hr))
+    {
+        char buf [1024];
+        FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM, NULL, hr, 0, buf, sizeof(buf), NULL);
+        printf("Error calling gfx->device->CreateRenderTargetView: %s\n", buf);
+        printf("Location: %s:%d\n", __FILE__, __LINE__);
+        exit(EXIT_FAILURE);
+    }
 
     COMCALL0(back_buffer, Release);
 
@@ -85,12 +108,17 @@ void gfx_draw_test_triangle(const gfx_t* gfx)
     {
         float x;
         float y;
+
+        unsigned char r;
+        unsigned char g;
+        unsigned char b;
+        unsigned char a;
     } vertex_t;
 
-    const vertex_t vertices [] = {
-        { 0.0f, 0.5f },
-        { 0.5f, -0.5f },
-        { -0.5f, -0.5f },
+    const vertex_t vertices [] = {        
+        { 0.0f, 0.5f, 255, 0, 0, 255 },
+        { 0.5f, -0.5f, 0, 255, 0, 255 },
+        { -0.5f, -0.5f, 0, 0, 255, 255 },
     };
 
     D3D11_BUFFER_DESC bd = {0};
@@ -140,13 +168,14 @@ void gfx_draw_test_triangle(const gfx_t* gfx)
     assert(vertex_error_blob == NULL);
 
     const D3D11_INPUT_ELEMENT_DESC ied [] = {
-        { "Position", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 }
+        { "Position", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+        { "Color", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 }
     };
 
     ID3D11InputLayout* layout = NULL;
     hr = COMCALL(gfx->device, CreateInputLayout,
         ied,
-        1,
+        sizeof(ied) / sizeof(ied[0]),
         COMCALL0(vertex_blob, GetBufferPointer),
         COMCALL0(vertex_blob, GetBufferSize),
         &layout
@@ -244,22 +273,24 @@ void gfx_draw_test_triangle(const gfx_t* gfx)
 
 void gfx_swap_buffers(const gfx_t* gfx)
 {
-    HRESULT hr = COMCALL(gfx->swap_chain, Present, 1, 0);
+    HRESULT hr;
+
+    hr = COMCALL(gfx->swap_chain, Present, 1, 0);
+    if(FAILED(hr))
+    {
+        char buf [1024];
+        FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM, NULL, hr, 0, buf, sizeof(buf), NULL);
+        printf("Error calling gfx->swap_chain->Present: %s\n", buf);
+        printf("Location: %s:%d\n", __FILE__, __LINE__);
+        exit(EXIT_FAILURE);
+    }
 }
 
 void gfx_destroy(gfx_t* gfx)
 {
-    if(gfx->swap_chain != NULL)
-        COMCALL0(gfx->swap_chain, Release);
-
-    if(gfx->device != NULL)
-        COMCALL0(gfx->device, Release);
-
-    if(gfx->context != NULL)
-        COMCALL0(gfx->context, Release);
-
-    if(gfx->target != NULL)
-        COMCALL0(gfx->target, Release);
+    #define X(TYPE, NAME) if(gfx->NAME != NULL) COMCALL0(gfx->NAME, Release);
+    gfx_foreach_COM_object()
+    #undef X
 
     free(gfx);
 }

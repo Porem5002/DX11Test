@@ -3,12 +3,17 @@
 #ifdef GFX_H_INTERNALS
 #include <d3d11.h>
 
+#define gfx_foreach_COM_object()\
+    X(IDXGISwapChain, swap_chain)\
+    X(ID3D11Device, device)\
+    X(ID3D11DeviceContext, context)\
+    X(ID3D11RenderTargetView, target)
+
 struct gfx_t
 {
-    IDXGISwapChain* swap_chain;
-    ID3D11Device* device;
-    ID3D11DeviceContext* context;
-    ID3D11RenderTargetView* target;
+    #define X(TYPE, NAME) TYPE* NAME;
+    gfx_foreach_COM_object()
+    #undef X
 };
 #endif
 
